@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Filter Reason Query (with Advanced Aggregation)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  />
+  <style>
+    body { background: #f8f9fa; }
+    .container { margin-top: 40px; }
+    .table-responsive { max-height: 70vh; overflow-y: auto; }
+    .spinner-border { display: none; }
+    #results-table th, #results-table td { font-size: 0.95rem; white-space: nowrap; }
+    #results-table th { position: sticky; top: 0; background: #fff; cursor: pointer; }
+    .sort-indicator { margin-left: 6px; opacity: 0.75; }
+    .form-inline-gap > * { margin-right: 12px; }
+    .badge-pill { border-radius: 50rem; }
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .summary-card h3 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 16px;
+    }
+    .summary-card .metric {
+      font-size: 24px;
+      font-weight: bold;
+      color: #007bff;
+    }
+    .summary-card .label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .percentage {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .nav-links {
+      margin-bottom: 20px;
+    }
+    .nav-links a {
+      background: #007bff;
+      color: white;
+      padding: 10px 20px;
+      text-decoration: none;
+      border-radius: 4px;
+      margin-right: 10px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .nav-links a:hover {
+      background: #0056b3;
+      color: white;
+      text-decoration: none;
+    }
+    .nav-links a.active {
+      background: #28a745;
+    }
+    .filter-input {
+      width: 90%;
+      padding: 5px;
+      font-size: 13px;
+      border: 1px solid #cfd8dc;
+      border-radius: 3px;
+      background: #f8fafc;
+    }
+    .filter-input[title*="comma"] {
+      border-color: #17a2b8;
+      background-color: #f8f9fa;
+    }
+    .filter-input:focus {
+      border-color: #007bff;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 class="mb-3">Filter Reason Query</h2>
+    
+    <div class="nav-links">
+      <a href="/">Query Table</a>
+      <a href="/dod-graphs">DoD Graphs</a>
+      <a href="/breakout-analysis">Breakout Analysis</a>
+      <a href="/aggregate-view">Aggregate View</a>
+      <a href="/loss-reason-query" class="active">Filter Reason Query</a>
+    </div>
+
+    <form id="loss-reason-form" class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label for="record_name" class="form-label">Record Name (Optional)</label>
+        <input type="text" class="form-control" id="record_name" name="record_name" placeholder="Leave empty to show all data" />
+      </div>
+      <div class="col-md-2">
+        <label for="date_from" class="form-label">Date From</label>
+        <input type="date" class="form-control" id="date_from" name="date_from" required />
+      </div>
+      <div class="col-md-2">
+        <label for="date_to" class="form-label">Date To</label>
+        <input type="date" class="form-control" id="date_to" name="date_to" />
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Run Query</button>
+      </div>
+      <div class="col-md-4 d-flex align-items-end gap-2">
+        <button type="button" id="show-all-btn" class="btn btn-success flex-fill">Show All Cached Data</button>
+        <button type="button" id="show-all-with-dates-btn" class="btn btn-info flex-fill">Show with Dates</button>
+      </div>
+    </form>
+
+    <div class="d-flex align-items-center form-inline-gap mb-2">
+      <div class="col-md-4">
+        <label for="aggregate-mode" class="form-label mb-0 me-2">Aggregation</label>
+        <select id="aggregate-mode" class="form-select form-select-sm">
+          <option value="none">None (Raw Data)</option>
+          <option value="record_name">By Record Name</option>
+          <option value="record_id_filter_reason">By Record Name + Filter Reason</option>
+          <option value="filter_reason">By Filter Reason Only</option>
+          <option value="filter_reason_date">By Filter Reason + Date</option>
+          <option value="provider_type">By Provider Type</option>
+          <option value="provider_filter_reason">By Provider Type + Filter Reason</option>
+          <option value="total">Grand Total</option>
+        </select>
+      </div>
+
+      <button id="export-btn" class="btn btn-outline-secondary btn-sm" style="display:none;">
+        Export CSV
+      </button>
+
+      <span class="spinner-border spinner-border-sm text-primary" id="loading-spinner" role="status"></span>
+
+      <span id="row-count" class="ms-auto badge bg-light text-dark" style="display:none;"></span>
+    </div>
+
+    <div id="error-message" class="alert alert-danger d-none"></div>
+
+    <div id="summaryCards" class="summary-cards" style="display:none;"></div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover" id="results-table" style="display:none;">
+        <thead class="table-light">
+          <tr id="results-header"></tr>
+          <tr id="filter-row"></tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    // -------- State --------
+    let originalColumns = [];   // Column names as received/mapped
+    let originalRows = [];      // Raw rows from server (unmodified)
+    let currentColumns = [];    // Columns currently rendered (may differ in aggregated mode)
+    let currentRows = [];       // Rows currently rendered (raw or aggregated)
+    let sortState = { col: null, dir: 'asc' }; // dir: 'asc' | 'desc'
+    let lastAggMode = 'none';
+    let filterValues = {};      // Store filter values for each column
+
+    // -------- Column handling helpers --------
+    function normalizeName(s) {
+      return String(s).toLowerCase().replace(/\s+/g, '_');
+    }
+    function findColumnInsensitive(cols, wanted) {
+      const target = normalizeName(wanted);
+      const i = cols.findIndex(c => normalizeName(c) === target);
+      return i >= 0 ? cols[i] : null;
+    }
+
+    // Utility: determine if a value is numeric
+    function isNumeric(val) {
+      if (val === null || val === '' || typeof val === 'boolean') return false;
+      if (typeof val === 'number' && isFinite(val)) return true;
+      const num = Number(String(val).replace(/,/g, ''));
+      return !isNaN(num) && isFinite(num);
+    }
+
+    // Utility: number formatting with commas (no fixed decimals)
+    function fmtNumber(val) {
+      if (!isNumeric(val)) return val;
+      const num = Number(String(val).replace(/,/g, ''));
+      return num.toLocaleString();
+    }
+
+    // Determine numeric columns (to sum) by sampling
+    function detectNumericColumns(cols, rows) {
+      const numericCols = new Set();
+      const sampleCount = Math.min(50, rows.length);
+      cols.forEach(col => {
+        let numericSeen = 0, totalChecked = 0;
+        for (let i = 0; i < sampleCount; i++) {
+          const v = rows[i]?.[col];
+          if (v !== null && v !== undefined && v !== '') {
+            totalChecked++;
+            if (isNumeric(v)) numericSeen++;
+          }
+        }
+        if (totalChecked > 0 && numericSeen / totalChecked >= 0.7) {
+          numericCols.add(col);
+        }
+      });
+      return numericCols;
+    }
+
+    // Provider classification function (same logic as backend)
+    function classifyProvider(recordName) {
+      const recordNameLower = recordName.toLowerCase();
+      const hasTypeA = recordNameLower.includes('type_a');
+      const hasTypeB = recordNameLower.includes('type_b');
+      
+      if (hasTypeB) {
+        return 'Type B';
+      } else if (hasTypeA && !hasTypeB) {
+        return 'Type A';
+      } else {
+        return 'Standard/Direct';
+      }
+    }
+
+    // Generic aggregator: group by one or more columns, sum numeric columns, add row_count
+    function aggregateBy(cols, rows, groupByColsWanted) {
+      // Resolve actual column names (case-insensitive)
+      const groupCols = [];
+      for (const wanted of groupByColsWanted) {
+        const found = findColumnInsensitive(cols, wanted);
+        if (!found) {
+          showError(`Cannot aggregate: no "${wanted}" column in results.`);
+          return { columns: cols, rows };
+        }
+        groupCols.push(found);
+      }
+
+      const numericCols = detectNumericColumns(cols, rows);
+
+      // Build groups
+      const groups = new Map(); // key -> accumulator
+      const keySep = '||';
+      rows.forEach(r => {
+        const keyParts = groupCols.map(gc => r[gc] ?? '');
+        const key = keyParts.join(keySep);
+
+        if (!groups.has(key)) {
+          const base = {};
+          groupCols.forEach((gc, idx) => { base[gc] = keyParts[idx]; });
+          numericCols.forEach(c => { base[c] = 0; });
+          base['row_count'] = 0;
+          groups.set(key, base);
+        }
+        const acc = groups.get(key);
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) acc[c] += Number(String(v).replace(/,/g, ''));
+        });
+        acc['row_count'] += 1;
+      });
+
+      // Output columns: group cols, numeric cols (in original order), row_count
+      const outColumns = [
+        ...groupCols,
+        ...cols.filter(c => !groupCols.includes(c) && numericCols.has(c)),
+        'row_count'
+      ];
+      const outRows = Array.from(groups.values());
+
+      return { columns: outColumns, rows: outRows };
+    }
+
+    // Provider-based aggregation
+    function aggregateByProviderType(cols, rows) {
+      const recordNameCol = findColumnInsensitive(cols, 'record_name');
+      if (!recordNameCol) {
+        showError('Cannot aggregate by provider: no "record_name" column in results.');
+        return { columns: cols, rows };
+      }
+
+      const numericCols = detectNumericColumns(cols, rows);
+      const groups = new Map();
+
+      rows.forEach(r => {
+        const recordName = r[recordNameCol] || 'Unknown';
+        const providerType = classifyProvider(recordName);
+
+        if (!groups.has(providerType)) {
+          const base = { 'provider_type': providerType };
+          numericCols.forEach(c => { base[c] = 0; });
+          base['row_count'] = 0;
+          base['record_count'] = new Set();
+          groups.set(providerType, base);
+        }
+        const acc = groups.get(providerType);
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) acc[c] += Number(String(v).replace(/,/g, ''));
+        });
+        acc['row_count'] += 1;
+        acc['record_count'].add(recordName);
+      });
+
+      // Convert record_count sets to counts
+      groups.forEach(acc => {
+        acc['record_count'] = acc['record_count'].size;
+      });
+
+      const outColumns = ['provider_type', ...cols.filter(c => numericCols.has(c)), 'row_count', 'record_count'];
+      const outRows = Array.from(groups.values());
+
+      return { columns: outColumns, rows: outRows };
+    }
+
+    // Provider + Filter Reason aggregation
+    function aggregateByProviderFilterReason(cols, rows) {
+      const recordNameCol = findColumnInsensitive(cols, 'record_name');
+      const filterReasonCol = findColumnInsensitive(cols, 'filter_reason');
+      
+      if (!recordNameCol || !filterReasonCol) {
+        showError('Cannot aggregate: missing "record_name" or "filter_reason" column.');
+        return { columns: cols, rows };
+      }
+
+      const numericCols = detectNumericColumns(cols, rows);
+      const groups = new Map();
+
+      rows.forEach(r => {
+        const recordName = r[recordNameCol] || 'Unknown';
+        const filterReason = r[filterReasonCol] || 'Unknown';
+        const providerType = classifyProvider(recordName);
+        const key = `${providerType}||${filterReason}`;
+
+        if (!groups.has(key)) {
+          const base = { 
+            'provider_type': providerType,
+            'filter_reason': filterReason
+          };
+          numericCols.forEach(c => { base[c] = 0; });
+          base['row_count'] = 0;
+          base['record_count'] = new Set();
+          groups.set(key, base);
+        }
+        const acc = groups.get(key);
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) acc[c] += Number(String(v).replace(/,/g, ''));
+        });
+        acc['row_count'] += 1;
+        acc['record_count'].add(recordName);
+      });
+
+      // Convert record_count sets to counts
+      groups.forEach(acc => {
+        acc['record_count'] = acc['record_count'].size;
+      });
+
+      const outColumns = ['provider_type', 'filter_reason', ...cols.filter(c => numericCols.has(c)), 'row_count', 'record_count'];
+      const outRows = Array.from(groups.values());
+
+      return { columns: outColumns, rows: outRows };
+    }
+
+    // Filter Reason only aggregation
+    function aggregateByFilterReason(cols, rows) {
+      const filterReasonCol = findColumnInsensitive(cols, 'filter_reason');
+      if (!filterReasonCol) {
+        showError('Cannot aggregate: no "filter_reason" column in results.');
+        return { columns: cols, rows };
+      }
+
+      const numericCols = detectNumericColumns(cols, rows);
+      const groups = new Map();
+
+      rows.forEach(r => {
+        const filterReason = r[filterReasonCol] || 'Unknown';
+
+        if (!groups.has(filterReason)) {
+          const base = { 'filter_reason': filterReason };
+          numericCols.forEach(c => { base[c] = 0; });
+          base['row_count'] = 0;
+          base['record_count'] = new Set();
+          groups.set(filterReason, base);
+        }
+        const acc = groups.get(filterReason);
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) acc[c] += Number(String(v).replace(/,/g, ''));
+        });
+        acc['row_count'] += 1;
+        acc['record_count'].add(r[findColumnInsensitive(cols, 'record_name')] || 'Unknown');
+      });
+
+      // Convert record_count sets to counts
+      groups.forEach(acc => {
+        acc['record_count'] = acc['record_count'].size;
+      });
+
+      const outColumns = ['filter_reason', ...cols.filter(c => numericCols.has(c)), 'row_count', 'record_count'];
+      const outRows = Array.from(groups.values());
+
+      return { columns: outColumns, rows: outRows };
+    }
+
+    // Filter Reason + Date aggregation
+    function aggregateByFilterReasonDate(cols, rows) {
+      const filterReasonCol = findColumnInsensitive(cols, 'filter_reason');
+      const dateKeyCol = findColumnInsensitive(cols, 'date_key');
+      
+      if (!filterReasonCol || !dateKeyCol) {
+        showError('Cannot aggregate: missing "filter_reason" or "date_key" column.');
+        return { columns: cols, rows };
+      }
+
+      const numericCols = detectNumericColumns(cols, rows);
+      const groups = new Map();
+
+      rows.forEach(r => {
+        const filterReason = r[filterReasonCol] || 'Unknown';
+        const dateKey = r[dateKeyCol] || 'Unknown';
+        const key = `${filterReason}||${dateKey}`;
+
+        if (!groups.has(key)) {
+          const base = { 
+            'filter_reason': filterReason,
+            'date_key': dateKey
+          };
+          numericCols.forEach(c => { base[c] = 0; });
+          base['row_count'] = 0;
+          base['record_count'] = new Set();
+          groups.set(key, base);
+        }
+        const acc = groups.get(key);
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) acc[c] += Number(String(v).replace(/,/g, ''));
+        });
+        acc['row_count'] += 1;
+        acc['record_count'].add(r[findColumnInsensitive(cols, 'record_name')] || 'Unknown');
+      });
+
+      // Convert record_count sets to counts
+      groups.forEach(acc => {
+        acc['record_count'] = acc['record_count'].size;
+      });
+
+      const outColumns = ['filter_reason', 'date_key', ...cols.filter(c => numericCols.has(c)), 'row_count', 'record_count'];
+      const outRows = Array.from(groups.values());
+
+      return { columns: outColumns, rows: outRows };
+    }
+
+    // Grand total aggregation
+    function aggregateByTotal(cols, rows) {
+      const numericCols = detectNumericColumns(cols, rows);
+      const total = { 'summary': 'Grand Total' };
+      
+      numericCols.forEach(c => { total[c] = 0; });
+      total['row_count'] = 0;
+      total['record_count'] = new Set();
+      total['filter_reason_count'] = new Set();
+
+      rows.forEach(r => {
+        numericCols.forEach(c => {
+          const v = r[c];
+          if (isNumeric(v)) total[c] += Number(String(v).replace(/,/g, ''));
+        });
+        total['row_count'] += 1;
+        total['record_count'].add(r[findColumnInsensitive(cols, 'record_name')] || 'Unknown');
+        total['filter_reason_count'].add(r[findColumnInsensitive(cols, 'filter_reason')] || 'Unknown');
+      });
+
+      // Convert sets to counts
+      total['record_count'] = total['record_count'].size;
+      total['filter_reason_count'] = total['filter_reason_count'].size;
+
+      const outColumns = ['summary', ...cols.filter(c => numericCols.has(c)), 'row_count', 'record_count', 'filter_reason_count'];
+      return { columns: outColumns, rows: [total] };
+    }
+
+    // Back-compat: aggregate by record_name only
+    function aggregateByRecordName(cols, rows) {
+      const recordCol = findColumnInsensitive(cols, 'record_name');
+      if (!recordCol) {
+        showError('Cannot aggregate: no "record_name" column in results.');
+        return { columns: cols, rows };
+      }
+      return aggregateBy(cols, rows, [recordCol]);
+    }
+
+    // Aggregate by record_id + filter_reason
+    function aggregateByRecordIdFilterReason(cols, rows) {
+      return aggregateBy(cols, rows, ['record_name', 'filter_reason']);
+    }
+
+    // Sort rows by a column (numeric aware, stable-ish)
+    function sortRows(cols, rows, col, dir) {
+      const factor = dir === 'desc' ? -1 : 1;
+      const copy = rows.slice();
+
+      copy.sort((a, b) => {
+        const av = a[col], bv = b[col];
+
+        // Nulls last
+        const aNull = av === null || av === undefined || av === '';
+        const bNull = bv === null || bv === undefined || bv === '';
+        if (aNull && !bNull) return 1;
+        if (!aNull && bNull) return -1;
+        if (aNull && bNull) return 0;
+
+        const aNum = isNumeric(av), bNum = isNumeric(bv);
+        if (aNum && bNum) {
+          const na = Number(String(av).replace(/,/g, ''));
+          const nb = Number(String(bv).replace(/,/g, ''));
+          return (na - nb) * factor;
+        }
+        // Mixed types: numbers first
+        if (aNum && !bNum) return -1 * factor;
+        if (!aNum && bNum) return 1 * factor;
+
+        // String compare
+        return String(av).localeCompare(String(bv)) * factor;
+      });
+
+      return copy;
+    }
+
+    // Render summary cards
+    function renderSummaryCards(rows) {
+      const summaryCards = document.getElementById("summaryCards");
+      summaryCards.innerHTML = "";
+
+      if (rows.length === 0) return;
+
+      // Calculate overall totals
+      let totalHits = 0, totalEvents = 0, totalRequests = 0, totalFilterReasons = 0;
+      const uniqueRecords = new Set();
+      const uniqueFilterReasons = new Set();
+
+      rows.forEach(row => {
+        totalHits += Number(row.hits || 0);
+        totalEvents += Number(row.events || 0);
+        totalRequests += Number(row.Requests || 0);
+        uniqueRecords.add(row.record_name || 'Unknown');
+        uniqueFilterReasons.add(row.filter_reason || 'Unknown');
+      });
+
+      const overallCompletionRate = totalEvents > 0 ? (totalHits / totalEvents * 100) : 0;
+
+      // Create summary cards
+      const cards = [
+        {
+          title: "Total Completions",
+          value: formatNumber(totalHits),
+          label: "across all records"
+        },
+        {
+          title: "Total Events",
+          value: formatNumber(totalEvents),
+          label: "total available"
+        },
+        {
+          title: "Overall Completion Rate",
+          value: overallCompletionRate.toFixed(2) + "%",
+          label: "completion rate"
+        },
+        {
+          title: "Unique Records",
+          value: uniqueRecords.size,
+          label: "records with data"
+        },
+        {
+          title: "Filter Reasons",
+          value: uniqueFilterReasons.size,
+          label: "unique reasons"
+        }
+      ];
+
+      cards.forEach(card => {
+        const cardElement = document.createElement("div");
+        cardElement.className = "summary-card";
+        cardElement.innerHTML = `
+          <h3>${card.title}</h3>
+          <div class="metric">${card.value}</div>
+          <div class="label">${card.label}</div>
+        `;
+        summaryCards.appendChild(cardElement);
+      });
+    }
+
+    // Render the table with currentColumns/currentRows
+    function renderTable(columns, rows) {
+      currentColumns = columns.slice();
+      currentRows = rows.slice();
+
+      // Header with sort indicators
+      const headerHtml = columns.map(col => {
+        let indicator = '';
+        if (sortState.col === col) {
+          indicator = sortState.dir === 'asc' ? '▲' : '▼';
+        }
+        return `<th data-col="${col}">${col}<span class="sort-indicator">${indicator}</span></th>`;
+      }).join('');
+      $('#results-header').html(headerHtml);
+
+      // Filter row
+      const filterHtml = columns.map(col => {
+        const filterValue = filterValues[col] || '';
+        let placeholder = 'Filter...';
+        let title = '';
+        
+        // Special handling for filter_reason column
+        if (col.toLowerCase().includes('filter_reason')) {
+          placeholder = 'Filter (comma-separated)';
+          title = 'Enter multiple values separated by commas';
+        } else if (col.toLowerCase().includes('record_name')) {
+          placeholder = 'Filter (comma-separated)';
+          title = 'Enter multiple values separated by commas';
+        } else if (col.toLowerCase().includes('date_key')) {
+          placeholder = 'Filter (comma-separated)';
+          title = 'Enter multiple dates separated by commas';
+        }
+        
+        return `<th><input type="text" class="filter-input" data-column="${col}" value="${filterValue}" placeholder="${placeholder}" title="${title}"></th>`;
+      }).join('');
+      $('#filter-row').html(filterHtml);
+
+      // Body
+      const bodyHtml = rows.map(row => {
+        return '<tr>' + columns.map(col => {
+          let value = row[col];
+          if (value == null) value = '';
+          value = fmtNumber(value);
+          return `<td>${value}</td>`;
+        }).join('') + '</tr>';
+      }).join('');
+      $('#results-body').html(bodyHtml);
+
+      // Row count badge
+      $('#row-count')
+        .text(`${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'}`)
+        .show();
+
+      // Show table and export
+      $('#results-table').show();
+      $('#export-btn').show();
+      
+      // Render filtered rows
+      const filteredRows = getFilteredAndSortedRows();
+      const filteredBodyHtml = filteredRows.map(row => {
+        return '<tr>' + columns.map(col => {
+          let value = row[col];
+          if (value == null) value = '';
+          value = fmtNumber(value);
+          return `<td>${value}</td>`;
+        }).join('') + '</tr>';
+      }).join('');
+      $('#results-body').html(filteredBodyHtml);
+
+      // Update row count to show filtered count
+      $('#row-count')
+        .text(`${filteredRows.length.toLocaleString()} row${filteredRows.length === 1 ? '' : 's'}`)
+        .show();
+      
+      // Render summary cards with filtered data
+      renderSummaryCards(filteredRows);
+      
+      // Add event listeners for filter inputs
+      $('#filter-row input').off('input').on('input', function() {
+        const column = $(this).data('column');
+        const value = $(this).val().toLowerCase();
+        filterValues[column] = value;
+        
+        // Re-render with filtered data
+        const filteredRows = getFilteredAndSortedRows();
+        const filteredBodyHtml = filteredRows.map(row => {
+          return '<tr>' + currentColumns.map(col => {
+            let value = row[col];
+            if (value == null) value = '';
+            value = fmtNumber(value);
+            return `<td>${value}</td>`;
+          }).join('') + '</tr>';
+        }).join('');
+        $('#results-body').html(filteredBodyHtml);
+        
+        // Update row count
+        $('#row-count')
+          .text(`${filteredRows.length.toLocaleString()} row${filteredRows.length === 1 ? '' : 's'}`)
+          .show();
+        
+        // Update summary cards
+        renderSummaryCards(filteredRows);
+      });
+    }
+
+    // Get filtered and sorted rows
+    function getFilteredAndSortedRows() {
+      // Filter
+      let filtered = currentRows.filter(row =>
+        Object.entries(filterValues).every(([col, val]) => {
+          if (!val) return true; // No filter value
+          const cellValue = (row[col] ?? "").toString().toLowerCase();
+          
+          // Special handling for filter_reason, record_name, and date_key columns - support comma-separated multiple values
+          if (col.toLowerCase().includes('filter_reason') || col.toLowerCase().includes('record_name') || col.toLowerCase().includes('date_key')) {
+            const filterTerms = val.split(',').map(term => term.trim()).filter(term => term);
+            if (filterTerms.length === 0) return true;
+            // AND: all terms must match
+            return filterTerms.every(term => cellValue.includes(term));
+          } else {
+            // Regular single-value filtering for other columns
+            return cellValue.includes(val);
+          }
+        })
+      );
+
+      // Sort
+      if (sortState.col && currentColumns.includes(sortState.col)) {
+        filtered.sort((a, b) => {
+          const valA = a[sortState.col] ?? "";
+          const valB = b[sortState.col] ?? "";
+          
+          // Date column special handling
+          if (sortState.col.toLowerCase().includes('date')) {
+            const dateA = new Date(valA);
+            const dateB = new Date(valB);
+            if (!isNaN(dateA) && !isNaN(dateB)) {
+              if (dateA < dateB) return sortState.dir === "asc" ? -1 : 1;
+              if (dateA > dateB) return sortState.dir === "asc" ? 1 : -1;
+              return 0;
+            }
+          }
+          
+          // Check if both values are numeric
+          const numA = parseFloat(valA);
+          const numB = parseFloat(valB);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            if (numA < numB) return sortState.dir === "asc" ? -1 : 1;
+            if (numA > numB) return sortState.dir === "asc" ? 1 : -1;
+            return 0;
+          } else {
+            const strA = valA.toString().toLowerCase();
+            const strB = valB.toString().toLowerCase();
+            if (strA < strB) return sortState.dir === "asc" ? -1 : 1;
+            if (strA > strB) return sortState.dir === "asc" ? 1 : -1;
+            return 0;
+          }
+        });
+      }
+      return filtered;
+    }
+
+    // Apply aggregation based on selector and preserve sorting
+    function rebuildView() {
+      const mode = $('#aggregate-mode').val();
+
+      let cols = originalColumns.slice();
+      let rows = originalRows.slice();
+
+      if (mode === 'record_name') {
+        ({ columns: cols, rows } = aggregateByRecordName(cols, rows));
+      } else if (mode === 'record_id_filter_reason') {
+        ({ columns: cols, rows } = aggregateByRecordIdFilterReason(cols, rows));
+      } else if (mode === 'filter_reason') {
+        ({ columns: cols, rows } = aggregateByFilterReason(cols, rows));
+      } else if (mode === 'filter_reason_date') {
+        ({ columns: cols, rows } = aggregateByFilterReasonDate(cols, rows));
+      } else if (mode === 'provider_type') {
+        ({ columns: cols, rows } = aggregateByProviderType(cols, rows));
+      } else if (mode === 'provider_filter_reason') {
+        ({ columns: cols, rows } = aggregateByProviderFilterReason(cols, rows));
+      } else if (mode === 'total') {
+        ({ columns: cols, rows } = aggregateByTotal(cols, rows));
+      } else {
+        // none: keep as-is
+      }
+
+      // If there is an active sort, re-apply it
+      if (sortState.col && cols.includes(sortState.col)) {
+        rows = sortRows(cols, rows, sortState.col, sortState.dir);
+      } else {
+        sortState = { col: null, dir: 'asc' };
+      }
+
+      lastAggMode = mode;
+      renderTable(cols, rows);
+    }
+
+    // Export CSV of current view
+    function exportCurrentTable() {
+      let csv = '';
+      csv += currentColumns.join(',') + '\n';
+
+      currentRows.forEach(row => {
+        const line = currentColumns.map(col => {
+          let v = row[col];
+          if (v == null) v = '';
+          if (isNumeric(v)) v = String(v).replace(/,/g, '');
+          v = '"' + String(v).replace(/"/g, '""') + '"';
+          return v;
+        }).join(',');
+        csv += line + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      let name = 'filter_reason_query_results';
+      if (lastAggMode === 'record_name') name += '_agg_record_name';
+      else if (lastAggMode === 'record_id_filter_reason') name += '_agg_recordid_filterreason';
+      else if (lastAggMode === 'filter_reason') name += '_agg_filter_reason';
+      else if (lastAggMode === 'filter_reason_date') name += '_agg_filter_reason_date';
+      else if (lastAggMode === 'provider_type') name += '_agg_provider_type';
+      else if (lastAggMode === 'provider_filter_reason') name += '_agg_provider_filter_reason';
+      else if (lastAggMode === 'total') name += '_agg_total';
+      
+      a.download = name + '.csv';
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Error helper
+    function showError(msg) {
+      $('#error-message').removeClass('d-none').text(msg || 'An error occurred.');
+    }
+    function clearError() {
+      $('#error-message').addClass('d-none').text('');
+    }
+
+    // Format number helper
+    function formatNumber(num) {
+      if (num === null || num === undefined || isNaN(num)) return "0";
+      return Math.round(num).toLocaleString('en-US');
+    }
+
+    // -------- Wire up UI --------
+    $(function () {
+      // Submit form
+      $('#loss-reason-form').on('submit', function (e) {
+        e.preventDefault();
+        clearError();
+        $('#results-table').hide();
+        $('#export-btn').hide();
+        $('#row-count').hide();
+        $('#summaryCards').hide();
+        $('#loading-spinner').show();
+        sortState = { col: null, dir: 'asc' }; // reset sort each query
+        filterValues = {}; // reset filters each query
+
+        const recordName = $('#record_name').val().trim();
+        const dateFrom = $('#date_from').val();
+        const dateTo = $('#date_to').val();
+
+        // If no record name provided, show error
+        if (!recordName) {
+          $('#loading-spinner').hide();
+          showError('Please enter a record name or use "Show All Cached Data" button.');
+          return;
+        }
+
+        $.post('/loss-reason-query', {
+          record_name: recordName,
+          date_from: dateFrom,
+          date_to: dateTo
+        }, function (resp) {
+          $('#loading-spinner').hide();
+
+          if (resp && resp.status === 'success' && resp.rows) {
+            // Normalize columns array
+            const cols = (resp.columns || []).map(c => c.name || c.column_name || c);
+            originalColumns = cols;
+            originalRows = resp.rows;
+
+            // Build initial view (respect current aggregation selector)
+            rebuildView();
+
+          } else if (resp && resp.status === 'success') {
+            showError('No data found for this query.');
+          } else {
+            showError(resp?.message || 'No data found.');
+          }
+        }).fail(function (xhr) {
+          $('#loading-spinner').hide();
+          showError(xhr.responseJSON?.message || 'Server error.');
+        });
+      });
+
+      // Show All Cached Data button
+      $('#show-all-btn').on('click', function () {
+        clearError();
+        $('#results-table').hide();
+        $('#export-btn').hide();
+        $('#row-count').hide();
+        $('#summaryCards').hide();
+        $('#loading-spinner').show();
+        sortState = { col: null, dir: 'asc' }; // reset sort each query
+        filterValues = {}; // reset filters each query
+
+        const dateFrom = $('#date_from').val();
+        const dateTo = $('#date_to').val();
+
+        // Build URL with optional date filtering
+        let url = '/api/all-filter-reason-data';
+        const params = [];
+        if (dateFrom) params.push(`date_from=${dateFrom}`);
+        if (dateTo) params.push(`date_to=${dateTo}`);
+        if (params.length > 0) {
+          url += '?' + params.join('&');
+        }
+
+        $.get(url, function (resp) {
+          $('#loading-spinner').hide();
+
+          if (resp && resp.status === 'success' && resp.rows) {
+            // Normalize columns array
+            const cols = (resp.columns || []).map(c => c.name || c.column_name || c);
+            originalColumns = cols;
+            originalRows = resp.rows;
+
+            // Automatically set aggregation to "By Filter Reason Only" for comprehensive view
+            $('#aggregate-mode').val('filter_reason');
+
+            // Build initial view with filter reason aggregation
+            rebuildView();
+
+            // Update row count to show total cached data
+            $('#row-count').text(`${resp.total_rows.toLocaleString()} total cached rows`).show();
+
+          } else if (resp && resp.status === 'success') {
+            showError('No cached filter reason data found. Please run some queries first.');
+          } else {
+            showError(resp?.message || 'No data found.');
+          }
+        }).fail(function (xhr) {
+          $('#loading-spinner').hide();
+          showError(xhr.responseJSON?.message || 'Server error.');
+        });
+      });
+
+      // Show All Cached Data with Dates button
+      $('#show-all-with-dates-btn').on('click', function () {
+        clearError();
+        $('#results-table').hide();
+        $('#export-btn').hide();
+        $('#row-count').hide();
+        $('#summaryCards').hide();
+        $('#loading-spinner').show();
+        sortState = { col: null, dir: 'asc' }; // reset sort each query
+        filterValues = {}; // reset filters each query
+
+        const dateFrom = $('#date_from').val();
+        const dateTo = $('#date_to').val();
+
+        // Build URL with optional date filtering
+        let url = '/api/all-filter-reason-data';
+        const params = [];
+        if (dateFrom) params.push(`date_from=${dateFrom}`);
+        if (dateTo) params.push(`date_to=${dateTo}`);
+        if (params.length > 0) {
+          url += '?' + params.join('&');
+        }
+
+        $.get(url, function (resp) {
+          $('#loading-spinner').hide();
+
+          if (resp && resp.status === 'success' && resp.rows) {
+            // Normalize columns array
+            const cols = (resp.columns || []).map(c => c.name || c.column_name || c);
+            originalColumns = cols;
+            originalRows = resp.rows;
+
+            // Set aggregation to "By Filter Reason + Date" to show filter reasons aggregated by date
+            $('#aggregate-mode').val('filter_reason_date');
+
+            // Build initial view with filter reason + date aggregation
+            rebuildView();
+
+            // Update row count to show total cached data
+            $('#row-count').text(`${resp.total_rows.toLocaleString()} total cached rows`).show();
+
+          } else if (resp && resp.status === 'success') {
+            showError('No cached filter reason data found. Please run some queries first.');
+          } else {
+            showError(resp?.message || 'No data found.');
+          }
+        }).fail(function (xhr) {
+          $('#loading-spinner').hide();
+          showError(xhr.responseJSON?.message || 'Server error.');
+        });
+      });
+
+      // Header click sorting
+      $('#results-header').on('click', 'th', function () {
+        const col = $(this).data('col');
+        if (!col) return;
+
+        if (sortState.col === col) {
+          sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.col = col;
+          sortState.dir = 'asc';
+        }
+
+        // Re-render with current filtering and new sorting
+        const filteredRows = getFilteredAndSortedRows();
+        const filteredBodyHtml = filteredRows.map(row => {
+          return '<tr>' + currentColumns.map(col => {
+            let value = row[col];
+            if (value == null) value = '';
+            value = fmtNumber(value);
+            return `<td>${value}</td>`;
+          }).join('') + '</tr>';
+        }).join('');
+        $('#results-body').html(filteredBodyHtml);
+        
+        // Update row count
+        $('#row-count')
+          .text(`${filteredRows.length.toLocaleString()} row${filteredRows.length === 1 ? '' : 's'}`)
+          .show();
+        
+        // Update summary cards
+        renderSummaryCards(filteredRows);
+      });
+
+      // Aggregation selector
+      $('#aggregate-mode').on('change', function () {
+        rebuildView();
+      });
+
+      // Export button
+      $('#export-btn').on('click', function () {
+        exportCurrentTable();
+      });
+    });
+  </script>
+</body>
+</html>

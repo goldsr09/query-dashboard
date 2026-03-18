@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Superset Query Runner</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            background: #f4f6fa;
+        }
+        .header {
+            background: linear-gradient(90deg, #007bff 60%, #17a2b8 100%);
+            color: white;
+            padding: 32px 0 24px 0;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 32px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.2em;
+            letter-spacing: 1px;
+        }
+        .container {
+            background: white;
+            max-width: 1100px;
+            margin: 0 auto 40px auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 32px 32px 40px 32px;
+        }
+        .nav-links {
+            margin-bottom: 28px;
+            text-align: center;
+        }
+        .nav-links a {
+            background: #007bff;
+            color: white;
+            padding: 10px 22px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 8px 8px 0;
+            font-weight: 500;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            transition: background 0.2s;
+            display: inline-block;
+        }
+        .nav-links a:hover {
+            background: #0056b3;
+        }
+        .card-section {
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #e3e6ee;
+        }
+        .form-row {
+            display: flex;
+            gap: 18px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .form-row > div {
+            min-width: 220px;
+        }
+        label {
+            font-size: 15px;
+            color: #333;
+            font-weight: 500;
+        }
+        input[type="text"], input[type="date"], select {
+            width: 100%;
+            padding: 7px 10px;
+            font-size: 15px;
+            border: 1px solid #cfd8dc;
+            border-radius: 4px;
+            margin-top: 4px;
+            background: #f8fafc;
+            transition: border 0.2s;
+        }
+        input[type="text"]:focus, input[type="date"]:focus, select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            padding: 9px 22px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 4px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            transition: background 0.2s;
+        }
+        button#debugBtn {
+            background: #ffc107;
+            color: #222;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button#debugBtn:hover {
+            background: #e0a800;
+        }
+        .status {
+            margin-top: 18px;
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #007bff;
+            min-height: 24px;
+        }
+        .export-controls {
+            margin: 24px 0 12px 0;
+            display: flex;
+            gap: 12px;
+        }
+        .export-controls button {
+            background: #28a745;
+        }
+        .export-controls button:last-child {
+            background: #17a2b8;
+        }
+        .export-controls button:hover {
+            background: #218838;
+        }
+        .export-controls button:last-child:hover {
+            background: #138496;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 18px;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            position: relative;
+        }
+        th, td {
+            border: 1px solid #e3e6ee;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 15px;
+        }
+
+        /* Sticky filter row (date and column filters) */
+        thead tr#filterRow {
+            position: sticky;
+            top: 54px; /* Height of the table header row (th) */
+            background: #f4f6fa;
+            z-index: 2;
+        }
+        /* Make the table header sticky as well for best effect */
+        thead tr#tableHead {
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 3;
+        }
+        th.sortable { cursor: pointer; }
+        th.sortable::after { content: " ⬍"; font-size: 0.8em; color: #888; }
+        th.sorted-asc::after { content: " ▲"; color: #000; }
+        th.sorted-desc::after { content: " ▼"; color: #000; }
+        tr:nth-child(even) { background: #f8f9fb; }
+        tr:hover { background: #e9f5ff; }
+        .filter-input {
+            width: 90%;
+            padding: 5px;
+            font-size: 13px;
+            border: 1px solid #cfd8dc;
+            border-radius: 3px;
+            background: #f8fafc;
+        }
+        .filter-input[title*="comma"] {
+            border-color: #17a2b8;
+            background-color: #f8f9fa;
+        }
+        .multi-filter-info {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+        .tip {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-left: 4px solid #1976d2;
+            padding: 10px 18px;
+            border-radius: 5px;
+            margin: 18px 0 0 0;
+            font-size: 14px;
+        }
+        @media (max-width: 800px) {
+            .container { padding: 12px 2vw; }
+            .form-row { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Superset Query Runner</h1>
+        <div style="font-size: 1.1em; font-weight: 400; margin-top: 8px; opacity: 0.93;">Flexible Data Explorer &amp; Export Tool</div>
+    </div>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/">Query Table</a>
+            <a href="/dod-graphs">DoD Graphs</a>
+            <a href="/breakout-analysis">Breakout Analysis</a>
+            <a href="/aggregate-view">Aggregate View</a>
+            <a href="/loss-reason-query" style="background: #6f42c1;">Loss Reason Query</a>
+        </div>
+        <div class="card-section">
+            <form id="queryForm">
+                <div class="form-row">
+                    <div>
+                        <label for="record_name">Record Name Filters (comma-separated):</label>
+                        <input type="text" id="record_name" name="record_name" placeholder="e.g. Acme, Widget, US">
+                        <div class="multi-filter-info">Use commas to separate multiple filters</div>
+                        <div style="margin-top: 4px;">
+                            <label style="font-size: 13px; color: #333;">Filter Mode:</label>
+                            <select id="recordNameFilterMode" style="font-size: 13px;">
+                                <option value="and">AND (all terms must match)</option>
+                                <option value="or">OR (any term matches)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="date_from">Date From:</label>
+                        <input type="date" id="date_from" name="date_from" value="2025-01-01">
+                    </div>
+                    <div>
+                        <label for="date_to">Date To:</label>
+                        <input type="date" id="date_to" name="date_to">
+                    </div>
+                    <div style="min-width: 180px;">
+                        <button type="submit">Run Query</button>
+                        <button type="button" id="debugBtn" style="margin-left: 10px;">Debug Record ID</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="export-controls" id="exportControls" style="display: none;">
+            <button id="exportCsv">Export to CSV</button>
+            <button id="exportJson">Export to JSON</button>
+        </div>
+        <table id="resultsTable" style="display:none;">
+            <thead>
+                <tr id="tableHead"></tr>
+                <tr id="filterRow"></tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+        <div class="tip" id="filterHelp" style="display:none;">
+            💡 <strong>Tip:</strong> Use commas in the Record Name filter to require <b>ALL</b> terms to be present (e.g., "US, Entertainment" finds records containing both words)
+        </div>
+    </div>
+
+    <script>
+        // Set all date_to and date_from inputs to today by default
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${yyyy}-${mm}-${dd}`;
+            dateInputs.forEach(input => {
+                if (!input.value) input.value = todayStr;
+            });
+        });
+        let jobId = null;
+        let allRows = [];
+        let allColumns = [];
+        let filterValues = {};  // Persist filters between renders
+        let sortConfig = { column: null, direction: null }; // Sorting state
+
+        document.getElementById("queryForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            
+            // Get form values
+            const recordNamesInput = document.getElementById("record_name").value.trim();
+            const dateFrom = document.getElementById("date_from").value;
+            const dateTo = document.getElementById("date_to").value;
+            
+            // Process record names (split by comma if multiple)
+            const recordNames = recordNamesInput ? recordNamesInput.split(',').map(name => name.trim()).filter(name => name) : [];
+            
+            if (recordNames.length === 0) {
+                alert("Please enter at least one record name!");
+                return;
+            }
+            
+            // Validate date range
+            if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+                alert('Start date cannot be after end date');
+                return;
+            }
+            
+            submitQuery(recordNames, dateFrom, dateTo);
+        });
+
+        // Debug button functionality
+        document.getElementById("debugBtn").addEventListener("click", function() {
+            const recordName = document.getElementById("record_name").value.split(',')[0].trim();
+            if (!recordName) {
+                alert("Enter a record name first");
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append("record_name", recordName);
+            
+            document.getElementById("status").innerText = "Running debug query...";
+            
+            fetch("/debug_query", { method: "POST", body: formData })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        console.log("Debug SQL:", data.sql);
+                        console.log("Debug Results:", data.data);
+                        
+                        // Display results in a popup or console
+                        const debugInfo = data.data.slice(0, 5).map(row => 
+                            `Record ID: ${row.record_id} (${row.record_id_type})\nName: ${row.record_name}\nHistory ID: ${row.history_id} (${row.history_id_type})\nString: ${row.record_id_as_string}\n---`
+                        ).join('\n');
+                        
+                        alert(`Debug Results (first 5 rows):\n\n${debugInfo}\n\nSee console for full data`);
+                        document.getElementById("status").innerText = `Debug complete. Found ${data.data.length} rows.`;
+                    } else {
+                        alert("Debug failed: " + data.message);
+                        document.getElementById("status").innerText = "Debug failed.";
+                    }
+                });
+        });
+
+        function submitQuery(recordNames, dateFrom, dateTo) {
+            document.getElementById("status").innerText = "Submitting query...";
+            document.getElementById("resultsTable").style.display = "none";
+            document.getElementById("exportControls").style.display = "none";
+            document.getElementById("filterHelp").style.display = "none";
+
+            const formData = new FormData();
+            // Handle multiple record names
+            recordNames.forEach(name => formData.append("record_name", name));
+            if (dateFrom) formData.append("date_from", dateFrom);
+            if (dateTo) formData.append("date_to", dateTo);
+
+            fetch("/run_query", { method: "POST", body: formData })
+                .then(resp => resp.json())
+                .then(data => {
+                    jobId = data.job_id;
+                    document.getElementById("status").innerText = data.cached ? 
+                        "Loaded from cache. Fetching results..." : "Query running...";
+                    pollStatus();
+                });
+        }
+
+        function pollStatus() {
+            if (!jobId) return;
+
+            fetch(`/check_status/${jobId}`)
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.status === "running") {
+                        document.getElementById("status").innerText = `Query running... ${data.progress || 0}%`;
+                        setTimeout(pollStatus, 2000);
+                    } else if (data.status === "success") {
+                        allRows = data.rows.map(row => normalizeRow(row));
+                        allColumns = data.columns;  // preserve original order
+                        document.getElementById("status").innerText = `Query complete. ${allRows.length} rows.`;
+                        renderHeader(allColumns);
+                        renderBody(getFilteredAndSortedRows());
+                        document.getElementById("resultsTable").style.display = "table";
+                        document.getElementById("exportControls").style.display = "block";
+                        document.getElementById("filterHelp").style.display = "block";
+                    } else {
+                        document.getElementById("status").innerText = "Query failed: " + data.message;
+                    }
+                });
+        }
+
+        function normalizeRow(row) {
+            const normalized = {};
+            for (const key in row) {
+                normalized[key] = (row[key] === null || row[key] === undefined) ? "" : row[key];
+            }
+            return normalized;
+        }
+
+        // Metric formulas for tooltips
+        const metricFormulas = {
+            'hits': 'Completions',
+            'events': 'Num_Events',
+            'totalselected': 'is_selected',
+            'fillrate': '(completed / num_events) * 100',
+            'renderrate': '(completed / selected) * 100',
+            'winrate': '(is_selected / real_returned) * 100',
+            'requests': 'Total Requests',
+            'realreturned': 'Returned (No cache)',
+            'losstotals': 'Returned - Completed',
+            'entries': 'Total: Real + Cached'
+        };  
+
+        function normalizeColName(col) {
+            return col.toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function renderHeader(columns) {
+            const tableHead = document.getElementById("tableHead");
+            const filterRow = document.getElementById("filterRow");
+
+            tableHead.innerHTML = "";
+            filterRow.innerHTML = "";
+
+            columns.forEach(col => {
+                // UI label override
+                let displayCol = col === 'total_selected' ? 'total_selected' : col;
+                const th = document.createElement("th");
+                th.innerText = displayCol;
+                th.classList.add("sortable");
+
+                // Add tooltip for metric formulas (case/space/underscore insensitive)
+                const normCol = normalizeColName(col);
+                if (metricFormulas[normCol]) {
+                  th.title = metricFormulas[normCol];
+                  th.style.textDecoration = "underline dotted #888";
+                  th.style.cursor = "help";
+                } else {
+                  th.title = "";
+                  th.style.textDecoration = "";
+                  th.style.cursor = "pointer";
+                }
+
+                th.addEventListener("click", () => toggleSort(col, th));
+                tableHead.appendChild(th);
+
+                // Filter input
+                const filterTh = document.createElement("th");
+                const input = document.createElement("input");
+                input.type = "text";
+                input.className = "filter-input";
+                input.dataset.column = col;
+                input.value = filterValues[col] || "";
+                
+                // Special handling for record_name column
+                if (col.toLowerCase().includes('record_name') || col.toLowerCase().includes('recordname')) {
+                    input.placeholder = "Filter (comma-separated)";
+                    input.title = "Enter multiple values separated by commas";
+                } else {
+                    input.placeholder = "Filter...";
+                }
+                
+                input.addEventListener("input", (e) => {
+                    filterValues[col] = e.target.value.toLowerCase();
+                    renderBody(getFilteredAndSortedRows());
+                });
+                filterTh.appendChild(input);
+                filterRow.appendChild(filterTh);
+            });
+        }
+
+        function renderBody(rows) {
+            const tableBody = document.getElementById("tableBody");
+            tableBody.innerHTML = "";
+
+            rows.forEach(row => {
+                const tr = document.createElement("tr");
+                allColumns.forEach(col => {
+                    const td = document.createElement("td");
+                    // UI label override for header, but keep data key
+                    const rawValue = row[col] ?? "";
+                    td.innerText = formatCellValue(rawValue, col === 'total_selected' ? 'total_selected' : col);
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function formatCellValue(value, columnName) {
+            if (value === "" || value === null || value === undefined) {
+                return "";
+            }
+
+            const colLower = columnName.toLowerCase();
+            
+            // Handle date columns - keep as date format
+            if (colLower.includes('date') || colLower === 'date_key') {
+                return value.toString();
+            }
+            
+            // Handle record_id as string (don't format as number)
+            if (colLower.includes('record_id')) {
+                return value.toString();
+            }
+            
+            // Handle record_name as string (don't format as number)
+            if (colLower.includes('record_name')) {
+                return value.toString();
+            }
+
+            const numValue = parseFloat(value);
+            
+            // Check if it's a valid number
+            if (isNaN(numValue)) {
+                return value.toString();
+            }
+
+            // Format percentage columns
+            if (colLower.includes('rate') || colLower.includes('percent')) {
+                return numValue.toLocaleString('en-US', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 2
+                }) + '%';
+            }
+            
+            // Format integer columns with commas (no decimals)
+            if (colLower.includes('hits') || colLower.includes('events') || 
+                colLower.includes('selected') || colLower.includes('requests') || 
+                colLower.includes('entries') || colLower.includes('totals') ||
+                colLower.includes('returned')) {
+                return Math.round(numValue).toLocaleString('en-US');
+            }
+            
+            // For other numeric values, use commas and up to 2 decimal places
+            if (Number.isInteger(numValue)) {
+                return numValue.toLocaleString('en-US');
+            } else {
+                return numValue.toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2
+                });
+            }
+        }
+
+        function getFilteredAndSortedRows() {
+            // Filter
+            let filtered = allRows.filter(row =>
+                Object.entries(filterValues).every(([col, val]) => {
+                    if (!val) return true; // No filter value
+                    const cellValue = (row[col] ?? "").toString().toLowerCase();
+                    // Special handling for record_name columns - support comma-separated multiple values
+                    if (col.toLowerCase().includes('record_name') || col.toLowerCase().includes('recordname')) {
+                        const filterTerms = val.split(',').map(term => term.trim()).filter(term => term);
+                        if (filterTerms.length === 0) return true;
+                        const mode = document.getElementById('recordNameFilterMode')?.value || 'and';
+                        if (mode === 'or') {
+                            // OR: at least one term matches
+                            return filterTerms.some(term => cellValue.includes(term));
+                        } else {
+                            // AND: all terms must match
+                            return filterTerms.every(term => cellValue.includes(term));
+                        }
+                    } else {
+                        // Regular single-value filtering for other columns
+                        return cellValue.includes(val);
+                    }
+                })
+            );
+
+            // Sort
+            if (sortConfig.column) {
+                filtered.sort((a, b) => {
+                    const valA = a[sortConfig.column] ?? "";
+                    const valB = b[sortConfig.column] ?? "";
+                    // Date column special handling
+                    if (sortConfig.column.toLowerCase().includes('date')) {
+                        // Try to parse as date
+                        const dateA = new Date(valA);
+                        const dateB = new Date(valB);
+                        if (!isNaN(dateA) && !isNaN(dateB)) {
+                            if (dateA < dateB) return sortConfig.direction === "asc" ? -1 : 1;
+                            if (dateA > dateB) return sortConfig.direction === "asc" ? 1 : -1;
+                            return 0;
+                        }
+                    }
+                    // Check if both values are numeric
+                    const numA = parseFloat(valA);
+                    const numB = parseFloat(valB);
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        if (numA < numB) return sortConfig.direction === "asc" ? -1 : 1;
+                        if (numA > numB) return sortConfig.direction === "asc" ? 1 : -1;
+                        return 0;
+                    } else {
+                        const strA = valA.toString().toLowerCase();
+                        const strB = valB.toString().toLowerCase();
+                        if (strA < strB) return sortConfig.direction === "asc" ? -1 : 1;
+                        if (strA > strB) return sortConfig.direction === "asc" ? 1 : -1;
+                        return 0;
+                    }
+                });
+            }
+            return filtered;
+        }
+
+        function toggleSort(column, thElement) {
+            // Reset sort if new column
+            if (sortConfig.column !== column) {
+                sortConfig = { column: column, direction: "asc" };
+            } else {
+                // Cycle asc -> desc -> none
+                if (sortConfig.direction === "asc") sortConfig.direction = "desc";
+                else if (sortConfig.direction === "desc") sortConfig = { column: null, direction: null };
+                else sortConfig.direction = "asc";
+            }
+
+            // Update header visual state
+            document.querySelectorAll("#tableHead th").forEach(th => {
+                th.classList.remove("sorted-asc", "sorted-desc");
+            });
+            if (sortConfig.column) {
+                thElement.classList.add(sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc");
+            }
+
+            renderBody(getFilteredAndSortedRows());
+        }
+
+        // Export functionality
+        document.getElementById("exportCsv").addEventListener("click", function() {
+            exportToCsv();
+        });
+
+        document.getElementById("exportJson").addEventListener("click", function() {
+            exportToJson();
+        });
+
+        function exportToCsv() {
+            const filteredRows = getFilteredAndSortedRows();
+            if (filteredRows.length === 0) {
+                alert("No data to export");
+                return;
+            }
+
+            let csvContent = "";
+            // Add headers (override total_selected label)
+            csvContent += allColumns.map(col => `"${col === 'total_selected' ? 'total_selected' : col}"`).join(",") + "\n";
+            
+            // Add data rows with formatting
+            filteredRows.forEach(row => {
+                const rowData = allColumns.map(col => {
+                    const rawValue = row[col] || "";
+                    const formattedValue = formatCellValue(rawValue, col === 'total_selected' ? 'total_selected' : col);
+                    return `"${String(formattedValue).replace(/"/g, '""')}"`;
+                });
+                csvContent += rowData.join(",") + "\n";
+            });
+
+            // Download file
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `query_results_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = "hidden";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportToJson() {
+            const filteredRows = getFilteredAndSortedRows();
+            if (filteredRows.length === 0) {
+                alert("No data to export");
+                return;
+            }
+
+            // Create formatted version for display
+            const formattedRows = filteredRows.map(row => {
+                const formattedRow = {};
+                allColumns.forEach(col => {
+                    formattedRow[col === 'total_selected' ? 'total_selected' : col] = formatCellValue(row[col], col === 'total_selected' ? 'total_selected' : col);
+                });
+                return formattedRow;
+            });
+
+            const jsonData = {
+                columns: allColumns.map(col => col === 'total_selected' ? 'total_selected' : col),
+                rows: filteredRows, // Raw data
+                formatted_rows: formattedRows, // Formatted data
+                exported_at: new Date().toISOString(),
+                total_rows: filteredRows.length
+            };
+
+            // Download file
+            const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: "application/json;charset=utf-8;" });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `query_results_${new Date().toISOString().split('T')[0]}.json`);
+            link.style.visibility = "hidden";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>

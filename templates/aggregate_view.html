@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Aggregate Data View - Superset Query Runner</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f5f5f5; font-weight: bold; }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .nav-links a:hover {
+            background: #0056b3;
+        }
+        .nav-links a.active {
+            background: #28a745;
+        }
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .summary-card .metric {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .summary-card .label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .percentage {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .record-list {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #007bff;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h2>Aggregate Data View</h2>
+    
+    <div class="nav-links">
+        <a href="/">Query Table</a>
+        <a href="/dod-graphs">DoD Graphs</a>
+        <a href="/breakout-analysis">Breakout Analysis</a>
+        <a href="/aggregate-view" class="active">Aggregate View</a>
+    </div>
+
+    <div class="form-section">
+        <form id="aggregateForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="record_name">Record Name Filters (comma-separated):</label>
+                    <input type="text" id="record_name" name="record_name" placeholder="e.g. Acme, Widget, US" style="width: 300px;">
+                    <small style="color: #666;">Use commas to separate multiple filters</small>
+                </div>
+                <div class="form-group">
+                    <label for="date_from">Date From:</label>
+                    <input type="date" id="date_from" name="date_from" value="2025-01-01">
+                </div>
+                <div class="form-group">
+                    <label for="date_to">Date To:</label>
+                    <input type="date" id="date_to" name="date_to">
+                </div>
+                <div class="form-group">
+                    <label for="group_by">Group By:</label>
+                    <select id="group_by" name="group_by">
+                        <option value="record">Individual Records</option>
+                        <option value="provider_type">Provider Type</option>
+                        <option value="total">Grand Total</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Get Aggregate Data</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div id="status" style="margin-top: 20px; font-weight: bold;"></div>
+
+    <div id="summaryCards" class="summary-cards" style="display:none;"></div>
+
+    <table id="resultsTable" style="display:none;">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <div id="noData" class="no-data" style="display:none;">
+        <p>No data available. Please run a regular query first to cache data, then return to this aggregate view.</p>
+    </div>
+
+    <script>
+        document.getElementById("aggregateForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            
+            // Get form values
+            const recordNamesInput = document.getElementById("record_name").value.trim();
+            const dateFrom = document.getElementById("date_from").value;
+            const dateTo = document.getElementById("date_to").value;
+            const groupBy = document.getElementById("group_by").value;
+            
+            // Process record names (split by comma if multiple)
+            const recordNames = recordNamesInput ? recordNamesInput.split(',').map(name => name.trim()).filter(name => name) : [];
+            
+            if (recordNames.length === 0) {
+                alert("Please enter at least one record name!");
+                return;
+            }
+            
+            // Validate date range
+            if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+                alert('Start date cannot be after end date');
+                return;
+            }
+            
+            submitAggregateQuery(recordNames, dateFrom, dateTo, groupBy);
+        });
+
+        function submitAggregateQuery(recordNames, dateFrom, dateTo, groupBy) {
+            document.getElementById("status").innerText = "Loading aggregate data...";
+            document.getElementById("resultsTable").style.display = "none";
+            document.getElementById("summaryCards").style.display = "none";
+            document.getElementById("noData").style.display = "none";
+
+            const formData = new FormData();
+            recordNames.forEach(name => formData.append("record_name", name));
+            formData.append("date_from", dateFrom);
+            formData.append("date_to", dateTo);
+            formData.append("group_by", groupBy);
+
+            fetch("/aggregate_data", { method: "POST", body: formData })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        document.getElementById("status").innerText = 
+                            `Aggregate data loaded: ${data.data.length} groups, ${data.total_rows_processed} rows processed`;
+                        renderAggregateData(data);
+                    } else {
+                        document.getElementById("status").innerText = "Error: " + data.message;
+                        if (data.message.includes("Missing data")) {
+                            document.getElementById("noData").style.display = "block";
+                        }
+                    }
+                })
+                .catch(error => {
+                    document.getElementById("status").innerText = "Error: " + error.message;
+                });
+        }
+
+        function renderAggregateData(data) {
+            const groupBy = data.group_by;
+            
+            // Render summary cards for quick overview
+            renderSummaryCards(data);
+            
+            // Render detailed table
+            renderAggregateTable(data);
+            
+            document.getElementById("summaryCards").style.display = "grid";
+            document.getElementById("resultsTable").style.display = "table";
+        }
+
+        function renderSummaryCards(data) {
+            const summaryCards = document.getElementById("summaryCards");
+            summaryCards.innerHTML = "";
+
+            // Calculate overall totals
+            let totalHits = 0, totalEvents = 0, totalRequests = 0;
+            data.data.forEach(row => {
+                totalHits += row.total_hits || 0;
+                totalEvents += row.total_events || 0;
+                totalRequests += row.total_requests || 0;
+            });
+
+            const overallCompletionRate = totalEvents > 0 ? (totalHits / totalEvents * 100) : 0;
+
+            // Create summary cards
+            const cards = [
+                {
+                    title: "Total Completions",
+                    value: formatNumber(totalHits),
+                    label: "across all records"
+                },
+                {
+                    title: "Total Events",
+                    value: formatNumber(totalEvents),
+                    label: "total available"
+                },
+                {
+                    title: "Overall Completion Rate",
+                    value: overallCompletionRate.toFixed(2) + "%",
+                    label: "completion rate"
+                },
+                {
+                    title: "Total Requests",
+                    value: formatNumber(totalRequests),
+                    label: "total requests"
+                }
+            ];
+
+            cards.forEach(card => {
+                const cardElement = document.createElement("div");
+                cardElement.className = "summary-card";
+                cardElement.innerHTML = `
+                    <h3>${card.title}</h3>
+                    <div class="metric">${card.value}</div>
+                    <div class="label">${card.label}</div>
+                `;
+                summaryCards.appendChild(cardElement);
+            });
+        }
+
+        function renderAggregateTable(data) {
+            const tableHead = document.getElementById("tableHead");
+            const tableBody = document.getElementById("tableBody");
+            const groupBy = data.group_by;
+
+            // Clear previous content
+            tableHead.innerHTML = "";
+            tableBody.innerHTML = "";
+
+            // Define columns based on grouping
+            let columns;
+            if (groupBy === "record") {
+                columns = [
+                    "Record Name", "Total Hits", "Total Events", "Completion Rate %", 
+                    "Avg Daily Hits", "Avg Daily Events", "Days with Data", "Date Range"
+                ];
+            } else if (groupBy === "provider_type") {
+                columns = [
+                    "Provider Type", "Total Hits", "Total Events", "Completion Rate %", 
+                    "Record Count", "Avg Daily Hits", "Days with Data"
+                ];
+            } else {
+                columns = [
+                    "Summary", "Total Hits", "Total Events", "Completion Rate %", 
+                    "Total Requests", "Record Count", "Days with Data"
+                ];
+            }
+
+            // Create header
+            const headerRow = document.createElement("tr");
+            columns.forEach(col => {
+                const th = document.createElement("th");
+                th.innerText = col;
+                headerRow.appendChild(th);
+            });
+            tableHead.appendChild(headerRow);
+
+            // Create data rows
+            data.data.forEach(row => {
+                const tr = document.createElement("tr");
+                
+                if (groupBy === "record") {
+                    tr.innerHTML = `
+                        <td><strong>${row.group_name}</strong></td>
+                        <td>${formatNumber(row.total_hits)}</td>
+                        <td>${formatNumber(row.total_events)}</td>
+                        <td class="percentage">${row.completion_rate.toFixed(2)}%</td>
+                        <td>${formatNumber(row.avg_daily_hits)}</td>
+                        <td>${formatNumber(row.avg_daily_events)}</td>
+                        <td>${row.days_with_data}</td>
+                        <td>${row.date_range}</td>
+                    `;
+                } else if (groupBy === "provider_type") {
+                    tr.innerHTML = `
+                        <td><strong>${row.group_name}</strong></td>
+                        <td>${formatNumber(row.total_hits)}</td>
+                        <td>${formatNumber(row.total_events)}</td>
+                        <td class="percentage">${row.completion_rate.toFixed(2)}%</td>
+                        <td>${row.record_count}</td>
+                        <td>${formatNumber(row.avg_daily_hits)}</td>
+                        <td>${row.days_with_data}</td>
+                    `;
+                } else {
+                    tr.innerHTML = `
+                        <td><strong>${row.group_name}</strong></td>
+                        <td>${formatNumber(row.total_hits)}</td>
+                        <td>${formatNumber(row.total_events)}</td>
+                        <td class="percentage">${row.completion_rate.toFixed(2)}%</td>
+                        <td>${formatNumber(row.total_requests)}</td>
+                        <td>${row.record_count}</td>
+                        <td>${row.days_with_data}</td>
+                    `;
+                }
+                
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function formatNumber(num) {
+            if (num === null || num === undefined || isNaN(num)) return "0";
+            return Math.round(num).toLocaleString('en-US');
+        }
+    </script>
+</body>
+</html>
+<script>
+// Set all date_to and date_from inputs to today by default on page load
+document.addEventListener('DOMContentLoaded', function() {
+  var dateInputs = document.querySelectorAll('input[type="date"]');
+  var today = new Date();
+  var yyyy = today.getFullYear();
+  var mm = String(today.getMonth() + 1).padStart(2, '0');
+  var dd = String(today.getDate()).padStart(2, '0');
+  var todayStr = yyyy + '-' + mm + '-' + dd;
+  dateInputs.forEach(function(input) {
+    if (!input.value) input.value = todayStr;
+  });
+});
+</script>
+</html>

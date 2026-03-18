@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Day-over-Day Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .nav-links a:hover {
+            background: #0056b3;
+        }
+        .form-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .charts-container {
+            margin-top: 20px;
+            width: 100%;
+            max-width: none;
+        }
+        .chart-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            margin: 0;
+        }
+        .chart-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .chart-container {
+            position: relative;
+            height: 650px;
+            width: 100%;
+            min-height: 500px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.loading {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .status.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .chart-container {
+                height: 400px;
+            }
+            .chart-card {
+                padding: 10px;
+            }
+        }
+        body {
+            max-width: none;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Day-over-Day Analysis</h1>
+        <div class="nav-links">
+            <a href="/">Query Table</a>
+            <a href="/dod-graphs">DoD Graphs</a>
+            <a href="/breakout-analysis">Breakout Analysis</a>
+            <a href="/aggregate-view">Aggregate View</a>
+        </div>
+    </div>
+
+    <div class="form-container">
+        <form id="dodForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="record_selection_mode">Record Selection:</label>
+                    <select id="record_selection_mode" name="record_selection_mode">
+                        <option value="filter">Filter by Name</option>
+                        <option value="dropdown">Select from Available</option>
+                    </select>
+                </div>
+                <div class="form-group" id="record_filter_group">
+                    <label for="record_name">Single Record Name:</label>
+                    <input type="text" id="record_name" name="record_name" placeholder="e.g. Acme (single record only)" style="width: 300px;">
+                    <small style="color: #666;">Enter ONE record name for trend analysis</small>
+                </div>
+                <div class="form-group" id="record_dropdown_group" style="display: none;">
+                    <label for="record_dropdown">Select Cached Record:</label>
+                    <select id="record_dropdown" name="record_dropdown" style="width: 320px;">
+                        <option value="">Loading available records...</option>
+                    </select>
+                    <small style="color: #666;">Choose from actual record names in your cached data</small>
+                </div>
+                <div class="form-group">
+                    <label for="metric">Primary Metric:</label>
+                    <select id="metric" name="metric">
+                        <option value="hits" selected>Completions</option>
+                        <option value="events">Events</option>
+                        <option value="total_selected">Total Selected</option>
+                        <option value="completion_rate">Completion Rate (%)</option>
+                        <option value="success_rate">Success Rate (%)</option>
+                        <option value="requests">Requests</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="dual_metric">Dual Metric (Optional):</label>
+                    <select id="dual_metric" name="dual_metric">
+                        <option value="">None (Single Metric)</option>
+                        <option value="completion_rate" selected>Completion Rate (%)</option>
+                        <option value="hits">Completions</option>
+                        <option value="events">Events</option>
+                        <option value="total_selected">Total Selected</option>
+                        <option value="success_rate">Success Rate (%)</option>
+                        <option value="requests">Requests</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="date_from">Date From:</label>
+                    <input type="date" id="date_from" name="date_from" value="2025-01-01">
+                </div>
+                <div class="form-group">
+                    <label for="date_to">Date To:</label>
+                    <input type="date" id="date_to" name="date_to">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Generate DoD Graph</button>
+                    <button type="button" id="refreshRecordsBtn" class="btn btn-primary" style="margin-left: 10px; background: #6c757d;">Refresh Records</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div id="status" class="status" style="display: none;"></div>
+
+    <div class="charts-container" id="chartsContainer" style="display: none;">
+        <div class="chart-card">
+            <div class="chart-title" id="chartTitle">Daily Values</div>
+            <div style="text-align: center; margin-bottom: 10px; font-size: 12px; color: #666;">
+                💡 Use mouse wheel to zoom, drag to pan, double-click to reset
+            </div>
+            <div class="chart-container">
+                <canvas id="mainChart"></canvas>
+            </div>
+            <div style="text-align: center; margin-top: 10px;">
+                <button id="resetZoomBtn" class="btn" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                    Reset Zoom
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mainChart = null;
+        let availableRecords = [];
+
+        // Handle record selection mode toggle
+        document.getElementById('record_selection_mode').addEventListener('change', function() {
+            const mode = this.value;
+            const filterGroup = document.getElementById('record_filter_group');
+            const dropdownGroup = document.getElementById('record_dropdown_group');
+            
+            if (mode === 'filter') {
+                filterGroup.style.display = 'block';
+                dropdownGroup.style.display = 'none';
+            } else {
+                filterGroup.style.display = 'none';
+                dropdownGroup.style.display = 'block';
+                loadAvailableRecords();
+            }
+        });
+
+        // Refresh records button
+        document.getElementById('refreshRecordsBtn').addEventListener('click', function() {
+            loadAvailableRecords();
+        });
+
+        // Load available records from cache
+        function loadAvailableRecords() {
+            const dropdown = document.getElementById('record_dropdown');
+            dropdown.innerHTML = '<option value="">Loading available records...</option>';
+            
+            fetch('/get_available_records', { method: 'GET' })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        availableRecords = data.records;
+                        dropdown.innerHTML = '<option value="">-- Select a record --</option>';
+                        
+                        availableRecords.forEach(record => {
+                            const option = document.createElement('option');
+                            option.value = record.name; // Use the exact record name as value
+                            option.textContent = record.display_name; // Show formatted display
+                            dropdown.appendChild(option);
+                        });
+                        
+                        if (availableRecords.length === 0) {
+                            dropdown.innerHTML = '<option value="">No cached records found - run some queries first</option>';
+                        }
+                    } else {
+                        dropdown.innerHTML = '<option value="">Error loading records</option>';
+                    }
+                })
+                .catch(err => {
+                    dropdown.innerHTML = '<option value="">Error loading records</option>';
+                    console.error('Error loading records:', err);
+                });
+        }
+
+        document.getElementById('dodForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const mode = document.getElementById('record_selection_mode').value;
+            const metric = document.getElementById('metric').value;
+            const dualMetric = document.getElementById('dual_metric').value;
+            const dateFrom = document.getElementById('date_from').value;
+            const dateTo = document.getElementById('date_to').value;
+            
+            let recordNames = [];
+            
+            if (mode === 'filter') {
+                const recordNamesInput = document.getElementById('record_name').value.trim();
+                if (recordNamesInput.includes(',')) {
+                    alert("DoD graphs work best with a single record. Please remove commas and enter only one record name for meaningful trend analysis.");
+                    return;
+                }
+                recordNames = recordNamesInput ? [recordNamesInput] : [];
+            } else {
+                const selectedRecord = document.getElementById('record_dropdown').value;
+                if (selectedRecord) {
+                    recordNames = [selectedRecord];
+                }
+            }
+            
+            if (recordNames.length === 0) {
+                alert("Please enter a record name or select a record from the dropdown!");
+                return;
+            }
+            
+            if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+                alert('Start date cannot be after end date');
+                return;
+            }
+            
+            fetchDodData(recordNames, metric, dualMetric, dateFrom, dateTo);
+        });
+
+        function fetchDodData(recordNames, metric, dualMetric, dateFrom, dateTo) {
+            const statusEl = document.getElementById('status');
+            const chartsEl = document.getElementById('chartsContainer');
+            
+            statusEl.className = 'status loading';
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Fetching data and generating graphs...';
+            chartsEl.style.display = 'none';
+            
+            const formData = new FormData();
+            recordNames.forEach(name => formData.append('record_name', name));
+            formData.append('metric', metric);
+            if (dualMetric) {
+                formData.append('dual_metric', dualMetric);
+            }
+            formData.append('date_from', dateFrom);
+            formData.append('date_to', dateTo);
+            
+            fetch('/dod_data', { method: 'POST', body: formData })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        createChart(data.data, metric, data.record_names.join(', '), data.dual_metric);
+                        const cacheStatus = data.cached ? ' (from cache)' : ' (fresh query)';
+                        statusEl.className = 'status success';
+                        statusEl.textContent = `Generated DoD analysis for ${data.data.length} days${cacheStatus}`;
+                        chartsEl.style.display = 'block';
+                    } else {
+                        statusEl.className = 'status error';
+                        statusEl.textContent = 'Error: ' + data.message;
+                    }
+                })
+                .catch(err => {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = 'Error: ' + err.message;
+                });
+        }
+
+        function createChart(data, metric, recordNames, dualMetric = null) {
+            // Destroy existing chart
+            if (mainChart) mainChart.destroy();
+            
+            const dates = data.map(d => d.date_key);
+            const values = data.map(d => d.value);
+            
+            // Metric name mapping
+            const metricNames = {
+                'hits': 'Completions',
+                'events': 'Events', 
+                'total_selected': 'Total Selected',
+                'completion_rate': 'Completion Rate (%)',
+                'success_rate': 'Success Rate (%)',
+                'requests': 'Requests'
+            };
+            
+            // Create datasets array starting with primary metric
+            const datasets = [{
+                label: metricNames[metric],
+                data: values,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 5,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#007bff',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                borderWidth: 3,
+                yAxisID: 'y'
+            }];
+            
+            // Add dual metric if specified
+            let dualValues = null;
+            if (dualMetric && data[0] && 'dual_value' in data[0]) {
+                dualValues = data.map(d => d.dual_value);
+                datasets.push({
+                    label: metricNames[dualMetric],
+                    data: dualValues,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: '#28a745',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    borderWidth: 3,
+                    yAxisID: 'y1'
+                });
+            }
+            
+            // Update title based on metrics
+            let titleText = `Daily ${metricNames[metric]}`;
+            if (dualMetric && dualValues) {
+                titleText += ` vs ${metricNames[dualMetric]}`;
+            }
+            titleText += ` - ${recordNames}`;
+            document.getElementById('chartTitle').textContent = titleText;
+            
+            // Calculate scaling for primary metric
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            const range = maxValue - minValue;
+            const padding = range * 0.1; // 10% padding
+            
+            // Calculate scaling for dual metric if present
+            let dualMinValue, dualMaxValue, dualRange, dualPadding;
+            if (dualValues) {
+                dualMinValue = Math.min(...dualValues);
+                dualMaxValue = Math.max(...dualValues);
+                dualRange = dualMaxValue - dualMinValue;
+                dualPadding = dualRange * 0.1;
+            }
+            
+            // Create chart configuration
+            const chartConfig = {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 20
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleColor: 'white',
+                            bodyColor: 'white',
+                            borderColor: '#007bff',
+                            borderWidth: 2,
+                            cornerRadius: 8,
+                            titleFont: {
+                                size: 18,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 17
+                            },
+                            padding: 15,
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed.y;
+                                    const datasetLabel = context.dataset.label;
+                                    if (datasetLabel.includes('Rate')) {
+                                        return `${datasetLabel}: ${value.toFixed(2)}%`;
+                                    }
+                                    return `${datasetLabel}: ${value.toLocaleString()}`;
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                font: {
+                                    size: 18,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 16
+                                },
+                                maxRotation: 45,
+                                minRotation: 0
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: minValue > 0 ? false : true,
+                            min: minValue > 0 ? Math.max(0, minValue - padding) : undefined,
+                            max: maxValue + padding,
+                            title: {
+                                display: true,
+                                text: metricNames[metric],
+                                font: {
+                                    size: 18,
+                                    weight: 'bold'
+                                },
+                                color: '#007bff'
+                            },
+                            ticks: {
+                                font: {
+                                    size: 16
+                                },
+                                color: '#007bff',
+                                callback: function(value) {
+                                    if (metric.includes('rate')) {
+                                        return value.toFixed(1) + '%';
+                                    }
+                                    return value.toLocaleString();
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Add second Y-axis if dual metric is present
+            if (dualMetric && dualValues) {
+                chartConfig.options.scales.y1 = {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: dualMinValue > 0 ? false : true,
+                    min: dualMinValue > 0 ? Math.max(0, dualMinValue - dualPadding) : undefined,
+                    max: dualMaxValue + dualPadding,
+                    title: {
+                        display: true,
+                        text: metricNames[dualMetric],
+                        font: {
+                            size: 18,
+                            weight: 'bold'
+                        },
+                        color: '#28a745'
+                    },
+                    ticks: {
+                        font: {
+                            size: 16
+                        },
+                        color: '#28a745',
+                        callback: function(value) {
+                            if (dualMetric.includes('rate')) {
+                                return value.toFixed(1) + '%';
+                            }
+                            return value.toLocaleString();
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false, // Only want the grid lines for one axis to show up
+                    }
+                };
+            }
+            
+            // Create the chart
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            mainChart = new Chart(ctx, chartConfig);
+        }
+
+        // Load available records on page load
+        window.addEventListener('load', function() {
+            // Don't auto-load records, wait for user to switch to dropdown mode
+        });
+
+        // Reset zoom button
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'resetZoomBtn') {
+                if (mainChart) {
+                    mainChart.resetZoom();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+<script>
+// Set all date_to and date_from inputs to today by default on page load
+document.addEventListener('DOMContentLoaded', function() {
+  var dateInputs = document.querySelectorAll('input[type="date"]');
+  var today = new Date();
+  var yyyy = today.getFullYear();
+  var mm = String(today.getMonth() + 1).padStart(2, '0');
+  var dd = String(today.getDate()).padStart(2, '0');
+  var todayStr = yyyy + '-' + mm + '-' + dd;
+  dateInputs.forEach(function(input) {
+    if (!input.value) input.value = todayStr;
+  });
+});
+</script>
+</html>
