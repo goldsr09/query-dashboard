@@ -18,7 +18,7 @@ app = Flask(__name__)
 application = app
 
 # --- Superset API Config ---
-SUPERSET_EXECUTE_URL = "https://superset.de.gcp.rokulabs.net/api/v1/sqllab/execute/"
+SUPERSET_EXECUTE_URL = "https://superset.your-company.example/api/v1/sqllab/execute/"
 SUPERSET_HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
@@ -447,8 +447,8 @@ def get_cached_results(deal_names, date_from, date_to):
         # For search patterns that should match multiple deals, be more conservative
         # Only force fresh queries for broad patterns that are likely to match multiple deals
         is_broad_search = (
-            len(deal_name) <= 10 or  # Short search terms like "Frema", "Banijay"
-            deal_name.lower() in ['frema', 'banijay', 'nbc', 'disney', 'warner'] or  # Known multi-deal patterns
+            len(deal_name) <= 10 or  # Short search terms like "Alpha", "Studio"
+            deal_name.lower() in ['alpha', 'studio', 'media', 'network', 'partner'] or  # Known multi-deal patterns
             '_' not in deal_name  # No underscores suggests a broad search
         )
         
@@ -1829,7 +1829,7 @@ def get_aggregate_data():
 
 @app.route("/debug_query", methods=["POST"])
 def debug_query():
-    deal_name = request.form.get("deal_name", "PSI").strip()
+    deal_name = request.form.get("deal_name", "Example Deal").strip()
     
     debug_sql = f"""
     SELECT 
